@@ -1,0 +1,5 @@
+convert filter0.png -bordercolor '#d4cfc7' -border 6x4 -alpha Set -virtual-pixel transparent -channel A -blur 0x3 -level 50,100% filter.png
+
+convert preprocessing0.png -bordercolor '#d4cfc7' -border 6x4 -alpha Set -virtual-pixel transparent -channel A -blur 0x3 -level 50,100% preprocessing.png
+
+convert node_coloring0.png -bordercolor '#d4cfc7' -border 6x4 -alpha Set -virtual-pixel transparent -channel A -blur 0x3 -level 50,100% node_coloring.png

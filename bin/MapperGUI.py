@@ -736,7 +736,9 @@ class MapperWorkerProcess:
         self.NodeColorCode = None
 
         vector_filters = { }
-        universal_filters = { 'kNN distance' : \
+        universal_filters = { 'From CSV' : \
+                                  self.mapper.filters.from_csv,
+                              'kNN distance' : \
                                   self.mapper.filters.kNN_distance,
                               'Distance to a measure' : \
                                   self.mapper.filters.distance_to_measure,
@@ -806,7 +808,8 @@ class MapperWorkerProcess:
         FilterPar = kwargs['FilterFn']
 
         vector_filters = { }
-        universal_filters = { 'kNN distance' : 'mapper.filters.kNN_distance',
+        universal_filters = { 'From CSV' : 'mapper.filters.from_csv',
+                              'kNN distance' : 'mapper.filters.kNN_distance',
                               'Distance to a measure' : \
                                   'mapper.filters.distance_to_measure',
                               'Eccentricity' : 'mapper.filters.eccentricity',
@@ -3360,12 +3363,12 @@ class NilPanel(wx.Panel):
 
 class MyDissimilarityFilterPanel(ChoicePanel):
     def __init__(self, parent):
-        ChoicesLabels = ('Eccentricity', 'kNN distance',
+        ChoicesLabels = ('From CSV', 'Eccentricity', 'kNN distance',
                          'Distance to a measure',
                          'Density, Gaussian kernel', 'Graph Laplacian',
                          'Distance matrix eigenvector',
                          'No filter')
-        ChoicesPanels = (MetricExponentPanel, kNNFiltParPanel, kNNFiltParPanel,
+        ChoicesPanels = (FromCSVPanel, MetricExponentPanel, kNNFiltParPanel, kNNFiltParPanel,
                          GaussianDensParPanel, GraphLaplacianParPanel,
                          DMEVParPanel, NilPanel)
         ChoicePanel.__init__(self, parent, ChoicesLabels, ChoicesPanels)
@@ -3384,6 +3387,72 @@ class MyDissimilarityFilterPanel(ChoicePanel):
             raise ValueError('No filter chosen.')
         Filter = self.Choices.GetStringSelection()
         return Filter
+
+class FromCSVPanel(wx.Panel):
+    def __init__(self, parent):
+        wx.Panel.__init__(self, parent)
+
+        hbox = Hbox()
+        self.SetSizer(hbox)
+
+        self.LastDir = '.'
+        P1 = wx.Panel(self)
+        P1.SetMinSize((360, -1))
+        P1.SetMaxSize((600, -1))
+        hbox.Add(P1, flag=wx.ALIGN_CENTER_VERTICAL, proportion=1)
+
+        self.InputMask = wx.TextCtrl(P1, style=wx.TE_PROCESS_ENTER)
+        FileOpenIcon = wx.ArtProvider.GetBitmap(id=wx.ART_FILE_OPEN,
+                                                client=wx.ART_BUTTON)
+        SelectFileButton = wx.BitmapButton(P1, bitmap=FileOpenIcon)
+        SelectFileButton.Bind(wx.EVT_BUTTON, self.OnSelectFileButton)
+
+        hbox2 = Hbox()
+        hbox2.Add(self.InputMask, proportion=1,
+                  flag=wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
+                  border=BORDER)
+        hbox2.Add(SelectFileButton, proportion=0,
+                  flag=wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT,
+                  border=BORDER)
+        P1.SetSizer(hbox2)
+
+        self.SetMinSize(self.GetBestSize())
+        self.InputMask.Bind(wx.EVT_TEXT_ENTER, self.OnTextEnter)
+
+        self.filename = ''
+        self.path = ''
+
+    def OnSelectFileButton(self, event):
+        if os.path.isdir(self.LastDir):
+            defaultDir = self.LastDir
+        else:
+            defaultDir = '.'
+        FileDialog = wx.FileDialog(self, 'Choose a data set', style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
+                                   defaultDir=defaultDir,
+                                   wildcard="All files (*.*)|*.*|"
+                                            "Comma-separated values (*.csv)|*.csv"
+                                   )
+        if FileDialog.ShowModal() == wx.ID_OK:
+            self.path = FileDialog.GetPath()
+            self.filename = os.path.basename(self.path)
+            self.InputMask.SetValue(self.path)
+            self.LastDir = os.path.dirname(self.path)
+
+        FileDialog.Destroy()
+
+    def OnTextEnter(self, event):
+        self.path = self.InputMask.GetValue()
+        self.filename = os.path.basename(self.path)
+        self.InputMask.SetValue(self.path)
+
+    def GetValue(self):
+        return {'filename': self.path}
+
+    def GetAllValues(self):
+        return {'filename': self.path}
+
+    def SetValues(self, Config):
+        self.filename = Config['filename']
 
 class MetricExponentPanel(wx.Panel):
     def __init__(self, parent):

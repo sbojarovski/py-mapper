@@ -62,6 +62,7 @@ import scipy.sparse.linalg as spla
 from scipy.spatial.distance import squareform, cdist, pdist
 import sys
 import math
+import csv
 if sys.hexversion < 0x03000000:
     from itertools import izip as zip
     range = xrange
@@ -69,9 +70,21 @@ if sys.hexversion < 0x03000000:
 from mapper import n_obs, cmappertoolserror
 from mapper.tools import progressreporter
 
-__all__ = ['eccentricity', 'Gauss_density', 'kNN_distance',
+__all__ = ['from_csv', 'eccentricity', 'Gauss_density', 'kNN_distance',
            'distance_to_measure', 'graph_Laplacian', 'dm_eigenvector',
            'zero_filter']
+
+def from_csv(data, filename='', metricpar={}, callback=None):
+    r'''Read filter values from csv file'''
+    assert filename != '', 'The file name cannot be empty.'
+    with open(filename, 'rb') as f:
+        reader = csv.reader(f)
+        try:
+            x = list(reader)
+            vals = np.array(x).astype('double')
+        except csv.Error as e:
+            sys.exit('file %s, line %d: %s' % (filename, reader.line_num, e))
+    return vals
 
 def eccentricity(data, exponent=1.,  metricpar={}, callback=None):
     if data.ndim==1:

@@ -465,8 +465,10 @@ class subrange_decomposition_cover_1d( _generic_cover ):
 
 class manual_cover_1d(_generic_cover):
     '''
-    Class for a cover where the intervals are set by hand. Input should N times 2 array where
-    the rows specify endpoints of the interval in the cover. Overlap determines how far the endpoints
+    Class for a cover where the intervals are set by hand. The endpoints variable should either
+    be a list containing tuples of length two (the endpoints of the interval) or a sorted
+    list containing integers or floats. In the latter case the intervals in the cover are those
+    with two consecutive numbers in the list as endpoints. Overlap determines how far the endpoints
     are shifted to the right or left. For example, if overlap is 50%, the endpoints will be put in the
     middle of the neighboring interval.
 
@@ -479,7 +481,6 @@ class manual_cover_1d(_generic_cover):
         info["str"]= self.__str__()
 
     def __str__(self):
-        #Take a look at this, right now it doesn't make any sense.
         return 'Manual 1d Cover. Intervals {0}. Overlap {1}.'. \
             format(tuple([len(self.endpoints)]), tuple([self.fract_overlap]))
 
@@ -490,10 +491,10 @@ class manual_cover_1d(_generic_cover):
         '''Provide the iterator. I'm not sure yet if I want to turn self.iter into an
         iterator here or in the __iter__ method.'''
 
-        # create dummy, since the _check_filter method alters the fractional overlap into an array
-        # with more than one element, but
-        # the _minmax method expects it to be a scalar, or array with one element.
         self._check_manual_filter(filt, mask)
+        # Iterate over the indices of the endpoints variable. The indices are given as tuples
+        # the index is added as an attribute in the level class and the _add_level method
+        # expects it to be hashable (is this correct?).
         self.iter = iter([(i,) for i in range(len(self.endpoints))])
         return self
 
@@ -501,8 +502,8 @@ class manual_cover_1d(_generic_cover):
             '''Calculates the endpoints of the intervals according to the specified overlap.'''
             if index[0] == 0:
                 range_min = -np.inf
-                range_max = self.fract_overlap*self.endpoints[index[0] + 1][0] + \
-                          (1-self.fract_overlap)*self.endpoints[index[0] + 1][1]
+                range_max = self.fract_overlap*self.endpoints[index[0] + 1][1] + \
+                          (1-self.fract_overlap)*self.endpoints[index[0] + 1][0]
             elif index[0] == len(self.endpoints)-1:
                 range_min = self.fract_overlap*self.endpoints[index[0] - 1][0] + \
                             (1- self.fract_overlap)*self.endpoints[index[0] -1][1]
@@ -513,8 +514,8 @@ class manual_cover_1d(_generic_cover):
             else:
                 range_min = self.fract_overlap*self.endpoints[index[0]-1][0] + \
                             (1-self.fract_overlap)*self.endpoints[index[0]-1][1]
-                range_max = self.fract_overlap*self.endpoints[index[0]+1][0] + \
-                            (1-self.fract_overlap)*self.endpoints[index[0] +1][1]
+                range_max = self.fract_overlap*self.endpoints[index[0]+1][1] + \
+                            (1-self.fract_overlap)*self.endpoints[index[0] +1][0]
             return range_min, range_max
 
     def __next__(self):
@@ -530,7 +531,7 @@ class manual_cover_1d(_generic_cover):
         return level(index, range_min, range_max)
 
     def data_index(self, level):
-        '''Returns the indices of the points in the levelset.'''
+        '''Returns the indices of the points whose filter values lie in the given interval.'''
         lb = (self.filt >= level.range_min)
         ub = (self.filt <= level.range_max)
         b = np.logical_and(lb, ub)
@@ -538,22 +539,37 @@ class manual_cover_1d(_generic_cover):
         return idx
 
     def _check_manual_input(self, endpoints, overlap, info):
-        '''Works basically as the _check_input method, but customized.'''
+        '''Checks that endpoints variable is a list containing either tuples of length 2
+        of floats/ints. In the latter case, this method checks the list is sorted and
+        converts endpoints into a list containing tuples of length two, where every
+        tuple consists of two consecutive integers in the original list. Also, the overlap
+        is saved as a fraction.'''
         assert isinstance(endpoints, list)
-        for i in endpoints:
-            assert isinstance(i, tuple)
-            assert len(i) == 2
-            assert (isinstance(i[0], (int, np.int, float, np.float))
+
+        if isinstance(endpoints[0], (int, np.int, float, np.float)):
+            for i in range(len(endpoints)):
+                assert isinstance(endpoints[i], (int, np.int, float, np.float))
+                # Check if list is sorted
+                if i < len(endpoints)-1:
+                    assert endpoints[i] < endpoints[i+1]
+            self.endpoints = [(endpoints[i], endpoints[i+1]) for i in range(len(endpoints)-1)]
+        elif isinstance(endpoints[0], tuple):
+            for i in endpoints:
+                assert isinstance(i, tuple)
+                assert len(i) == 2
+                assert (isinstance(i[0], (int, np.int, float, np.float))
                     and isinstance(i[1], (int, np.int, float, np.float)))
+        else:
+            raise TypeError('The endpoints variable should contain tuples, integers or floats.')
         assert isinstance(overlap, (int, np.int, float, np.float))
-        assert 0<= overlap < 100
+        assert 0 <= overlap < 100
         self.fract_overlap = np.float(overlap)/100
         assert isinstance(info, collections.MutableMapping)
         self.info = info
         self.info["fract_overlap"] = self.fract_overlap
 
     def _check_manual_filter(self, filt, mask):
-        '''Works basically as the _check_filter method, but customized'''
+        '''Does the same as the _check_input method, but without altering self.intervals'''
         assert isinstance(filt, np.ndarray)
         if filt.ndim == 1:
             filt = filt[:, np.newaxis]

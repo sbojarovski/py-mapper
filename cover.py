@@ -57,13 +57,13 @@ class level:
         return("Filter level. Index: {0}, Range min: {1}, Range max: {2}".\
                    format(self.index, self.range_min, self.range_max))
 
-class _generic_cover:
+class _generic_cover(object):
     '''
     Base class for covers. Do not instantiate this class, but define derived
     classes.
     '''
     def __len__(self):
-        return  int(self.intervals.prod()) # numpy.int64 → int
+        return int(self.intervals.prod()) # numpy.int64 → int
 
     def _check_input(self, intervals, overlap, info):
         '''
@@ -462,3 +462,127 @@ class subrange_decomposition_cover_1d( _generic_cover ):
         b = np.logical_and(lb,ub)
         idx, = np.where(b.all(axis=1))
         return idx
+
+class manual_cover_1d(_generic_cover):
+    '''
+    Class for a cover where the intervals are set by hand. Input should N times 2 array where
+    the rows specify endpoints of the interval in the cover. Overlap determines how far the endpoints
+    are shifted to the right or left. For example, if overlap is 50%, the endpoints will be put in the
+    middle of the neighboring interval.
+
+    '''
+
+    def __init__(self, endpoints, overlap = overlap_default, info={}):
+        info["type"] = "Manual Cover 1d"
+        self._check_manual_input(endpoints, overlap, info)
+        self.endpoints = endpoints
+        info["str"]= self.__str__()
+
+    def __str__(self):
+        #Take a look at this, right now it doesn't make any sense.
+        return 'Manual 1d Cover. Intervals {0}. Overlap {1}.'. \
+            format(tuple([len(self.endpoints)]), tuple([self.fract_overlap]))
+
+    def __iter__(self):
+        return self
+
+    def __call__(self, filt, mask=None):
+        '''Provide the iterator. I'm not sure yet if I want to turn self.iter into an
+        iterator here or in the __iter__ method.'''
+
+        # create dummy, since the _check_filter method alters the fractional overlap into an array
+        # with more than one element, but
+        # the _minmax method expects it to be a scalar, or array with one element.
+        self._check_manual_filter(filt, mask)
+        self.iter = iter([(i,) for i in range(len(self.endpoints))])
+        return self
+
+    def _minmax(self, index):
+            '''Calculates the endpoints of the intervals according to the specified overlap.'''
+            if index[0] == 0:
+                range_min = -np.inf
+                range_max = self.fract_overlap*self.endpoints[index[0] + 1][0] + \
+                          (1-self.fract_overlap)*self.endpoints[index[0] + 1][1]
+            elif index[0] == len(self.endpoints)-1:
+                range_min = self.fract_overlap*self.endpoints[index[0] - 1][0] + \
+                            (1- self.fract_overlap)*self.endpoints[index[0] -1][1]
+                range_max = np.inf
+            elif index[0] > len(self.endpoints) or index[0] < 0:
+                raise IndexError("The index variable is out of bounds for the "
+                                 "endpoints variable")
+            else:
+                range_min = self.fract_overlap*self.endpoints[index[0]-1][0] + \
+                            (1-self.fract_overlap)*self.endpoints[index[0]-1][1]
+                range_max = self.fract_overlap*self.endpoints[index[0]+1][0] + \
+                            (1-self.fract_overlap)*self.endpoints[index[0] +1][1]
+            return range_min, range_max
+
+    def __next__(self):
+        '''Provide iterator over the levels for Python 3'''
+        index = self.iter.__next__()
+        range_min, range_max = self._minmax(index)
+        return level(index, range_min, range_max)
+
+    def next(self):
+        '''Provide iterator over the levels for Python 2.'''
+        index = self.iter.next()
+        range_min, range_max = self._minmax(index)
+        return level(index, range_min, range_max)
+
+    def data_index(self, level):
+        '''Returns the indices of the points in the levelset.'''
+        lb = (self.filt >= level.range_min)
+        ub = (self.filt <= level.range_max)
+        b = np.logical_and(lb, ub)
+        idx, = np.where(np.logical_and(self.mask_bool, b.all(axis=1)))
+        return idx
+
+    def _check_manual_input(self, endpoints, overlap, info):
+        '''Works basically as the _check_input method, but customized.'''
+        assert isinstance(endpoints, list)
+        for i in endpoints:
+            assert isinstance(i, tuple)
+            assert len(i) == 2
+            assert (isinstance(i[0], (int, np.int, float, np.float))
+                    and isinstance(i[1], (int, np.int, float, np.float)))
+        assert isinstance(overlap, (int, np.int, float, np.float))
+        assert 0<= overlap < 100
+        self.fract_overlap = np.float(overlap)/100
+        assert isinstance(info, collections.MutableMapping)
+        self.info = info
+        self.info["fract_overlap"] = self.fract_overlap
+
+    def _check_manual_filter(self, filt, mask):
+        '''Works basically as the _check_filter method, but customized'''
+        assert isinstance(filt, np.ndarray)
+        if filt.ndim == 1:
+            filt = filt[:, np.newaxis]
+        assert filt.ndim == 2
+        self.filt = filt
+
+        if mask is None:
+            self.info['mask'] = None
+            filt_mask = filt
+            self.mask_bool = True
+        else:
+            assert mask.ndim == 1
+            assert mask.dtype == np.bool
+            assert len(mask) == len(filt)
+            # Store the proportion of unmasked points
+            self.info['mask'] = float(len(mask) - mask.sum()) / len(mask)
+            assert 0 < self.info['mask'] <= 1
+            filt_mask = filt[mask]
+            self.mask_bool = mask
+
+        self.dim = filt.shape[1]
+        self.min = filt_mask.min(axis=0)
+        self.max = filt_mask.max(axis=0)
+        self.range = (self.max - self.min)
+
+        self.info["dim"] = self.dim
+        self.info["min"] = self.min
+        self.info["max"] = self.max
+        self.info["range"] = self.range
+
+    def __len__(self):
+        return len(self.endpoints)
